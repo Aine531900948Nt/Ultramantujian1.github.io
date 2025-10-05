@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>奥特曼大全图鉴</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link rel="stylesheet" href="cropper.min.css">
+    <script src="cropper.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 登录模态框 -->
+    <div id="loginModal">
+        <div class="login-container">
+            <h1 class="login-title">奥特曼大全图鉴</h1>
+            <p class="subtitle">请选择您的访问模式</p>
+            
+            <div class="login-buttons">
+                <button class="login-btn guest-btn" id="guestLogin">游客模式</button>
+                <button class="login-btn developer-btn" id="developerLogin">开发者模式</button>
+            </div>
+            
+            <div class="password-container" id="passwordContainer">
+                <input type="password" class="password-input" id="passwordInput" placeholder="请输入开发者密码">
+                <button class="btn btn-primary" id="submitPassword">确认</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 主应用内容（初始隐藏） -->
+    <div id="appContent" style="display: none;">
+        <!-- 开发者模式开关 -->
+        <div id="devModeToggle">
+            <button id="toggleDevMode">开发者模式已启用</button>
+        </div>
+        
+        <!-- 导航栏 -->
+        <nav>
+            <ul>
+                <li><a href="#home" class="nav-link active">图鉴首页</a></li>
+                <li><a href="#powerRanking" class="nav-link">战力排行</a></li>
+                <li><a href="#features" class="nav-link">特色功能</a></li>
+                <li><a href="#extensions" class="nav-link">扩展模块</a></li>
+            </ul>
+        </nav>
+        
+        <!-- 主页内容 -->
+        <main id="home" class="page active">
+            <header>
+                <h1>奥特曼大全图鉴</h1>
+                <p class="subtitle">探索光之巨人的传奇故事</p>
+                
+                <!-- 搜索框 -->
+                <div class="search-container">
+                    <input type="text" id="searchInput" placeholder="搜索奥特曼或形态...">
+                    <button id="searchBtn">搜索</button>
+                </div>
+            </header>
+            
+            <!-- 新增：添加奥特曼按钮（仅开发者可见） -->
+            <div class="add-button-container" id="homeAddBtnContainer" style="display: none;">
+                <button class="add-ultraman-btn" id="homeAddBtn">
+                    <span>+</span> 添加新奥特曼
+                </button>
+            </div>
+            
+            <!-- 分类筛选 -->
+            <div class="filter-container">
+                <div class="filter-group">
+                    <label for="eraFilter">年代分类</label>
+                    <select id="eraFilter">
+                        <option value="all">全部年代</option>
+                        <option value="昭和">昭和</option>
+                        <option value="平成">平成</option>
+                        <option value="新生代">新生代</option>
+                        <option value="令和">令和</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="genderFilter">性别分类</label>
+                    <select id="genderFilter">
+                        <option value="all">全部性别</option>
+                        <option value="男">男</option>
+                        <option value="女">女</option>
+                        <option value="无性别">无性别</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="birthPlaceFilter">出生地分类</label>
+                    <select id="birthPlaceFilter">
+                        <option value="all">全部出生地</option>
+                        <option value="M78星云">M78星云（光之国）</option>
+                        <option value="L77星云">L77星云</option>
+                        <option value="U40">U40</option>
+                        <option value="O50">O50</option>
+                        <option value="地球">地球</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="raceFilter">种族分类</label>
+                    <select id="raceFilter">
+                        <option value="all">全部种族</option>
+                        <option value="红族">红族</option>
+                        <option value="蓝族">蓝族</option>
+                        <option value="银族">银族</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+                
+                <div class="filter-group">
+                    <label for="sortFilter">排序方式</label>
+                    <select id="sortFilter">
+                        <option value="debutYear">登场年份</option>
+                        <option value="name">名称</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- 奥特曼卡片容器 -->
+            <div id="ultramanGrid" class="ultraman-grid">
+                <!-- 奥特曼卡片将通过JavaScript动态生成 -->
+            </div>
+            
+            <!-- 添加奥特曼部分（仅开发者可见） -->
+            <div id="addUltramanSection" class="add-ultraman-section" style="display: none;">
+                <div class="section-header">
+                    <h2 class="section-title">添加新奥特曼</h2>
+                    <button class="toggle-form-btn" id="toggleFormBtn">显示表单</button>
+                </div>
+                
+                <!-- 添加表单 -->
+                <div class="form-container" id="ultramanFormContainer" style="display: none;">
+                    <form id="ultramanForm">
+                        <div class="form-section">
+                            <h3 class="form-title">基本信息</h3>
+                            
+                            <div class="image-upload-group">
+                                <div class="image-upload">
+                                    <h4>全身照</h4>
+                                    <img id="ultramanImagePreview" src="https://via.placeholder.com/200x250/e2e8f0/4a5568?text=奥特曼全身照" class="image-preview" alt="奥特曼全身照预览">
+                                    <input type="file" id="ultramanImage" accept="image/*" style="display: none;">
+                                    <button type="button" class="btn btn-secondary" id="selectUltramanImage">选择全身照</button>
+                                </div>
+                                <div class="image-upload">
+                                    <h4>头像</h4>
+                                    <img id="ultramanAvatarPreview" src="https://via.placeholder.com/150x150/e2e8f0/4a5568?text=奥特曼头像" class="avatar-preview" alt="奥特曼头像预览">
+                                    <input type="file" id="ultramanAvatar" accept="image/*" style="display: none;">
+                                    <button type="button" class="btn btn-secondary" id="selectUltramanAvatar">选择头像</button>
+                                    <button type="button" class="btn btn-secondary" id="cropFromFullImage">从全身照截取</button>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanName">奥特曼名称 *</label>
+                                    <input type="text" id="ultramanName" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanEra">年代分类 *</label>
+                                    <select id="ultramanEra" required>
+                                        <option value="">请选择</option>
+                                        <option value="昭和">昭和</option>
+                                        <option value="平成">平成</option>
+                                        <option value="新生代">新生代</option>
+                                        <option value="令和">令和</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanGender">性别 *</label>
+                                    <select id="ultramanGender" required>
+                                        <option value="">请选择</option>
+                                        <option value="男">男</option>
+                                        <option value="女">女</option>
+                                        <option value="无性别">无性别</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanAge">年龄</label>
+                                    <input type="text" id="ultramanAge">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanBirthPlace">出生地 *</label>
+                                    <select id="ultramanBirthPlace" required>
+                                        <option value="">请选择</option>
+                                        <option value="M78星云">M78星云（光之国）</option>
+                                        <option value="L77星云">L77星云</option>
+                                        <option value="U40">U40</option>
+                                        <option value="O50">O50</option>
+                                        <option value="地球">地球</option>
+                                        <option value="其他">其他</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanRace">种族</label>
+                                    <select id="ultramanRace">
+                                        <option value="">请选择</option>
+                                        <option value="红族">红族</option>
+                                        <option value="蓝族">蓝族</option>
+                                        <option value="银族">银族</option>
+                                        <option value="其他">其他</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanDebutYear">首次登场年份 *</label>
+                                    <input type="number" id="ultramanDebutYear" min="1966" max="2030" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanAppearance">出场作品</label>
+                                    <input type="text" id="ultramanAppearance">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanHumanForm">人间体</label>
+                                    <input type="text" id="ultramanHumanForm">
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanTransformer">变身器</label>
+                                    <input type="text" id="ultramanTransformer">
+                                </div>
+                            </div>
+                            
+                            <!-- 新增物理属性 -->
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanHeight">身高</label>
+                                    <input type="text" id="ultramanHeight">
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanWeight">体重</label>
+                                    <input type="text" id="ultramanWeight">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanFlightSpeed">飞行速度</label>
+                                    <input type="text" id="ultramanFlightSpeed">
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanRunningSpeed">行走速度</label>
+                                    <input type="text" id="ultramanRunningSpeed">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanSwimmingSpeed">水中速度</label>
+                                    <input type="text" id="ultramanSwimmingSpeed">
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanJumpingPower">跳跃力</label>
+                                    <input type="text" id="ultramanJumpingPower">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="ultramanArmStrength">腕力</label>
+                                    <input type="text" id="ultramanArmStrength">
+                                </div>
+                                <div class="form-group">
+                                    <label for="ultramanGripStrength">握力</label>
+                                    <input type="text" id="ultramanGripStrength">
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="ultramanSkills">技能名称</label>
+                                <textarea id="ultramanSkills"></textarea>
+                            </div>
+                        </div>
+                        
+                        <!-- 形态信息 - 改为动态添加 -->
+                        <div class="form-section">
+                            <div class="form-section-title">
+                                <h3 class="form-title">形态信息</h3>
+                                <button type="button" class="add-form-btn" id="addFormBtn">+ 添加其他形态</button>
+                            </div>
+                            
+                            <div id="formsContainer">
+                                <!-- 第一个形态作为基础形态 -->
+                                <div class="form-section-container" data-form-index="0">
+                                    <h4>基础形态</h4>
+                                    
+                                    <div class="image-upload-group">
+                                        <div class="image-upload">
+                                            <h5>全身照</h5>
+                                            <img id="baseFormImagePreview" src="https://via.placeholder.com/200x250/e2e8f0/4a5568?text=基础形态全身照" class="image-preview" alt="基础形态全身照预览">
+                                            <input type="file" id="baseFormImage" accept="image/*" style="display: none;">
+                                            <button type="button" class="btn btn-secondary select-form-image">选择全身照</button>
+                                        </div>
+                                        <div class="image-upload">
+                                            <h5>头像</h5>
+                                            <img id="baseFormAvatarPreview" src="https://via.placeholder.com/150x150/e2e8f0/4a5568?text=基础形态头像" class="avatar-preview" alt="基础形态头像预览">
+                                            <input type="file" id="baseFormAvatar" accept="image/*" style="display: none;">
+                                            <button type="button" class="btn btn-secondary select-form-avatar">选择头像</button>
+                                            <button type="button" class="btn btn-secondary crop-form-from-full">从全身照截取</button>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="baseFormName">形态名称 *</label>
+                                            <input type="text" id="baseFormName" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="baseFormPowerLevel">战力等级 *</label>
+                                            <select id="baseFormPowerLevel" required>
+                                                <option value="">请选择</option>
+                                                <option value="T0">T0</option>
+                                                <option value="T1">T1</option>
+                                                <option value="T2">T2</option>
+                                                <option value="T3">T3</option>
+                                                <option value="T4">T4</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- 形态物理属性 -->
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="baseFormHeight">身高</label>
+                                            <input type="text" id="baseFormHeight">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="baseFormWeight">体重</label>
+                                            <input type="text" id="baseFormWeight">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="baseFormFlightSpeed">飞行速度</label>
+                                            <input type="text" id="baseFormFlightSpeed">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="baseFormRunningSpeed">行走速度</label>
+                                            <input type="text" id="baseFormRunningSpeed">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="baseFormSwimmingSpeed">水中速度</label>
+                                            <input type="text" id="baseFormSwimmingSpeed">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="baseFormJumpingPower">跳跃力</label>
+                                            <input type="text" id="baseFormJumpingPower">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-row">
+                                        <div class="form-group">
+                                            <label for="baseFormArmStrength">腕力</label>
+                                            <input type="text" id="baseFormArmStrength">
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="baseFormGripStrength">握力</label>
+                                            <input type="text" id="baseFormGripStrength">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="baseFormSkills">必杀技</label>
+                                        <textarea id="baseFormSkills"></textarea>
+                                    </div>
+                                    
+                                    <div class="form-group">
+                                        <label for="baseFormDescription">形态描述</label>
+                                        <textarea id="baseFormDescription"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="form-section">
+                            <h3 class="form-title">角色简介</h3>
+                            
+                            <div class="form-group">
+                                <label for="ultramanDescription">角色详细介绍</label>
+                                <textarea id="ultramanDescription" rows="6"></textarea>
+                            </div>
+                        </div>
+                        
+                        <div class="form-actions" style="display: flex; gap: 15px; justify-content: center; margin-top: 30px;">
+                            <button type="submit" class="btn btn-primary" id="saveUltramanBtn">保存奥特曼信息</button>
+                            <button type="reset" class="btn btn-secondary">重置表单</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </main>
+        
+        <!-- 战力排行页面 -->
+        <main id="powerRanking" class="page">
+            <header>
+                <h1>奥特曼战力排行</h1>
+                <p class="subtitle">基于官方数据和粉丝投票综合评定</p>
+            </header>
+            
+            <div class="power-ranking">
+                <div class="power-tier">
+                    <h2 class="tier-header">T0 顶级战力</h2>
+                    <div class="tier-grid" id="tier0Grid">
+                        <!-- 顶级战力奥特曼将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <div class="power-tier">
+                    <h2 class="tier-header">T1 高等战力</h2>
+                    <div class="tier-grid" id="tier1Grid">
+                        <!-- 高等战力奥特曼将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <div class="power-tier">
+                    <h2 class="tier-header">T2 中等战力</h2>
+                    <div class="tier-grid" id="tier2Grid">
+                        <!-- 中等战力奥特曼将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <div class="power-tier">
+                    <h2 class="tier-header">T3 基础战力</h2>
+                    <div class="tier-grid" id="tier3Grid">
+                        <!-- 基础战力奥特曼将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+                
+                <div class="power-tier">
+                    <h2 class="tier-header">T4 入门战力</h2>
+                    <div class="tier-grid" id="tier4Grid">
+                        <!-- 入门战力奥特曼将通过JavaScript动态生成 -->
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- 特色功能页面 -->
+        <main id="features" class="page">
+            <header>
+                <h1>特色功能</h1>
+                <p class="subtitle">探索更多奥特曼相关内容</p>
+            </header>
+            
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>数据统计</h3>
+                    <p>查看奥特曼各项数据的统计分析</p>
+                    <div class="feature-placeholder">
+                        <p>功能开发中...</p>
+                    </div>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>时间线</h3>
+                    <p>浏览奥特曼系列作品的时间线</p>
+                    <div class="feature-placeholder">
+                        <p>功能开发中...</p>
+                    </div>
+                </div>
+                
+                <div class="feature-card">
+                    <h3>技能库</h3>
+                    <p>查看所有奥特曼的技能和必杀技</p>
+                    <div class="feature-placeholder">
+                        <p>功能开发中...</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- 扩展模块页面 -->
+        <main id="extensions" class="page">
+            <header>
+                <h1>扩展模块</h1>
+                <p class="subtitle">未来可添加的功能模块</p>
+            </header>
+            
+            <div class="extensions-grid">
+                <div class="extension-card">
+                    <h3>战斗模拟</h3>
+                    <p>奥特曼之间的虚拟对战系统</p>
+                    <div class="extension-placeholder">
+                        <p>模块待开发</p>
+                    </div>
+                </div>
+                
+                <div class="extension-card">
+                    <h3>收藏系统</h3>
+                    <p>收藏你最喜欢的奥特曼和形态</p>
+                    <div class="extension-placeholder">
+                        <p>模块待开发</p>
+                    </div>
+                </div>
+                
+                <div class="extension-card">
+                    <h3>社区功能</h3>
+                    <p>与其他奥特曼粉丝交流分享</p>
+                    <div class="extension-placeholder">
+                        <p>模块待开发</p>
+                    </div>
+                </div>
+            </div>
+        </main>
+        
+        <!-- 奥特曼详情模态框 -->
+        <div id="ultramanModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title" id="modalUltramanName"></h2>
+                    <span class="close-btn">&times;</span>
+                </div>
+                <div class="modal-body" id="ultramanDetails">
+                    <!-- 奥特曼详情将通过JavaScript动态生成 -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- 图片查看模态框 -->
+        <div id="imageViewerModal" class="modal">
+            <span class="close-btn">&times;</span>
+            <div class="modal-content">
+                <img id="largeImage" src="" alt="奥特曼大图">
+            </div>
+        </div>
+        
+        <!-- 图片裁剪模态框 -->
+        <div id="cropModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 class="modal-title">裁剪图片</h2>
+                    <span class="close-btn">&times;</span>
+                </div>
+                <div class="modal-body">
+                    <div class="crop-container">
+                        <img id="cropImage" src="" alt="裁剪图片">
+                    </div>
+                    <div style="text-align: center;">
+                        <button class="btn btn-primary" id="confirmCrop">确认裁剪</button>
+                        <button class="btn btn-secondary" id="cancelCrop" style="margin-left: 10px;">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>奥特曼大全图鉴 &copy; 2023 - 探索光之巨人的传奇世界</p>
+        </footer>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
