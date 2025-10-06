@@ -606,5 +606,36 @@
   loadUltramans();
   setInterval(loadUltramans, 3000); // 3秒刷新一次
 </script>
+<script>
+  // 从Bmob读取奥特曼信息，并监听变化
+  function loadUltramans() {
+    const Ultraman = Bmob.Object.extend("Ultraman");
+    const query = new Bmob.Query(Ultraman);
+    
+    // 获取所有数据
+    query.find({
+      success: function(results) {
+        const listContainer = document.getElementById('ultramanList');
+        listContainer.innerHTML = '';
+        
+        // 循环显示每个奥特曼
+        for (let i = 0; i < results.length; i++) {
+          const ultraman = results[i];
+          listContainer.innerHTML += `
+            <div style="margin: 10px; padding: 10px; border: 1px solid #ccc;">
+              <h3>${ultraman.get('name')}</h3>
+              <p>技能：${ultraman.get('skill')}</p>
+              <img src="${ultraman.get('img')}" style="width: 200px;">
+            </div>
+          `;
+        }
+      }
+    });
+  }
+
+  // 页面加载时就读取数据，并且每3秒自动刷新一次（确保实时性）
+  loadUltramans();
+  setInterval(loadUltramans, 3000); // 3秒刷新一次
+</script>
 </body>
 </html>
