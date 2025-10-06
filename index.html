@@ -14,7 +14,7 @@
 <!-- 连接你的Bmob应用（替换成你的密钥） -->
 <script>
   // 初始化Bmob（替换成你第三步记下来的两个值）
-  Bmob.initialize("你的Application ID", "你的REST API Key");
+  Bmob.initialize("ee35d097aa8265adf1f97ac7985974aa", "113f6a90c098c124fd800a6969a47260");
 </script>
 </head>
 <body>
@@ -575,7 +575,15 @@
     </div>
     
     <script src="script.js"></script>
-    <script>
+    <!-- 添加新奥特曼的表单 -->
+<h3>添加新奥特曼</h3>
+<form id="ultramanForm">
+  名字：<input type="text" name="name" required><br><br>
+  技能：<input type="text" name="skill" required><br><br>
+  图片地址：<input type="text" name="img" placeholder="粘贴图片网址" required><br><br>
+  <button type="submit">保存</button>
+</form>
+<script>
   // 从Bmob读取奥特曼信息，并监听变化
   function loadUltramans() {
     const Ultraman = Bmob.Object.extend("Ultraman");
@@ -606,7 +614,10 @@
   loadUltramans();
   setInterval(loadUltramans, 3000); // 3秒刷新一次
 </script>
-<script>
+<!-- 展示奥特曼列表的区域 -->
+<h3>奥特曼列表</h3>
+<div id="ultramanList"></div> <!-- 这里会显示所有奥特曼 -->
+    <script>
   // 从Bmob读取奥特曼信息，并监听变化
   function loadUltramans() {
     const Ultraman = Bmob.Object.extend("Ultraman");
