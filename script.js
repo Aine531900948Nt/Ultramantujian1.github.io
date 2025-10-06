@@ -1,1219 +1,556 @@
-// 全局变量
-let ultramans = [];
-let isDeveloperMode = false;
-let currentCroppingTarget = null;
-let cropper = null;
-let isEditing = false;
-let currentEditingId = null;
+// 动态加载Bmob SDK
+function loadBmobSDK() {
+  return new Promise((resolve, reject) => {
+    // 检查是否已经加载
+    if (window.Bmob) {
+      resolve();
+      return;
+    }
+    
+    // 创建script标签加载Bmob SDK
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/bmob@2.2.10/dist/Bmob-2.2.10.min.js';
+    script.onload = () => {
+      console.log('Bmob SDK加载成功');
+      resolve();
+    };
+    script.onerror = () => {
+      console.error('Bmob SDK加载失败');
+      reject(new Error('Bmob SDK加载失败'));
+    };
+    document.head.appendChild(script);
+  });
+}
 
-// 初始化页面
+// 应用配置
+const appConfig = {
+  bmobAppId: "您的Application ID",
+  bmobRestApiKey: "您的REST API Key",
+  useLocalStorageFallback: true // 当Bmob不可用时使用本地存储
+};
+
+let ultramans = [];
+let currentEditIndex = -1;
+let isBmobAvailable = false;
+
+// DOM元素加载完成后初始化应用
 document.addEventListener('DOMContentLoaded', function() {
-    // 登录逻辑
-    const loginModal = document.getElementById('loginModal');
-    const appContent = document.getElementById('appContent');
-    const guestLogin = document.getElementById('guestLogin');
-    const developerLogin = document.getElementById('developerLogin');
-    const passwordContainer = document.getElementById('passwordContainer');
-    const passwordInput = document.getElementById('passwordInput');
-    const submitPassword = document.getElementById('submitPassword');
-    const devModeToggle = document.getElementById('devModeToggle');
-    const toggleDevModeBtn = document.getElementById('toggleDevMode');
-    
-    // 开发者密码默认为88888888
-    const DEVELOPER_PASSWORD = '88888888';
-    
-    // 游客登录
-    guestLogin.addEventListener('click', function() {
-        isDeveloperMode = false;
-        loginModal.style.display = 'none';
-        appContent.style.display = 'block';
-        devModeToggle.style.display = 'none';
-        document.getElementById('addUltramanSection').style.display = 'none';
-        document.getElementById('homeAddBtnContainer').style.display = 'none';
-        initApp();
-    });
-    
-    // 开发者登录
-    developerLogin.addEventListener('click', function() {
-        passwordContainer.style.display = 'block';
-    });
-    
-    // 提交密码
-    submitPassword.addEventListener('click', function() {
-        if (passwordInput.value === DEVELOPER_PASSWORD) {
-            isDeveloperMode = true;
-            loginModal.style.display = 'none';
-            appContent.style.display = 'block';
-            devModeToggle.style.display = 'block';
-            document.getElementById('addUltramanSection').style.display = 'block';
-            document.getElementById('homeAddBtnContainer').style.display = 'block';
-            initApp();
-        } else {
-            alert('密码错误，请重新输入');
-        }
-    });
-    
-    // 切换开发者模式
-    toggleDevModeBtn.addEventListener('click', function() {
-        isDeveloperMode = !isDeveloperMode;
-        toggleDevModeBtn.textContent = isDeveloperMode ? '开发者模式已启用' : '开发者模式已禁用';
-        document.getElementById('addUltramanSection').style.display = isDeveloperMode ? 'block' : 'none';
-        document.getElementById('homeAddBtnContainer').style.display = isDeveloperMode ? 'block' : 'none';
-    });
-    
-    // 导航切换
-    const navLinks = document.querySelectorAll('.nav-link');
-    const pages = document.querySelectorAll('.page');
-    
-    navLinks.forEach(link => {
-        link.addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // 移除所有活跃状态
-            navLinks.forEach(l => l.classList.remove('active'));
-            pages.forEach(page => page.classList.remove('active'));
-            
-            // 添加当前活跃状态
-            this.classList.add('active');
-            const targetPage = document.querySelector(this.getAttribute('href'));
-            targetPage.classList.add('active');
-        });
-    });
-    
-    // 搜索功能
-    document.getElementById('searchBtn').addEventListener('click', performSearch);
-    document.getElementById('searchInput').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            performSearch();
-        }
-    });
-    
-    // 图片裁剪相关
-    const cropModal = document.getElementById('cropModal');
-    const cropImage = document.getElementById('cropImage');
-    const confirmCrop = document.getElementById('confirmCrop');
-    const cancelCrop = document.getElementById('cancelCrop');
-    const closeCropModal = cropModal.querySelector('.close-btn');
-    
-    // 确认裁剪
-    confirmCrop.addEventListener('click', function() {
-        if (cropper && currentCroppingTarget) {
-            const croppedCanvas = cropper.getCroppedCanvas();
-            const croppedImageUrl = croppedCanvas.toDataURL('image/jpeg');
-            
-            // 更新预览图
-            if (currentCroppingTarget.type === 'ultraman') {
-                if (currentCroppingTarget.imageType === 'avatar') {
-                    document.getElementById('ultramanAvatarPreview').src = croppedImageUrl;
-                } else {
-                    document.getElementById('ultramanImagePreview').src = croppedImageUrl;
-                }
-            } else if (currentCroppingTarget.type === 'form') {
-                const formIndex = currentCroppingTarget.formIndex;
-                const formContainer = document.querySelector(`[data-form-index="${formIndex}"]`);
-                if (currentCroppingTarget.imageType === 'avatar') {
-                    formContainer.querySelector('.avatar-preview').src = croppedImageUrl;
-                } else {
-                    formContainer.querySelector('.image-preview').src = croppedImageUrl;
-                }
-            }
-            
-            // 销毁裁剪实例并关闭模态框
-            cropper.destroy();
-            cropModal.style.display = 'none';
-            currentCroppingTarget = null;
-        }
-    });
-    
-    // 取消裁剪
-    cancelCrop.addEventListener('click', function() {
-        if (cropper) {
-            cropper.destroy();
-        }
-        cropModal.style.display = 'none';
-        currentCroppingTarget = null;
-    });
-    
-    // 关闭裁剪模态框
-    closeCropModal.addEventListener('click', function() {
-        if (cropper) {
-            cropper.destroy();
-        }
-        cropModal.style.display = 'none';
-        currentCroppingTarget = null;
-    });
-    
-    // 选择奥特曼全身照
-    document.getElementById('selectUltramanImage').addEventListener('click', function() {
-        document.getElementById('ultramanImage').click();
-    });
-    
-    // 选择奥特曼头像
-    document.getElementById('selectUltramanAvatar').addEventListener('click', function() {
-        document.getElementById('ultramanAvatar').click();
-    });
-    
-    // 从全身照截取头像
-    document.getElementById('cropFromFullImage').addEventListener('click', function() {
-        const fullImageUrl = document.getElementById('ultramanImagePreview').src;
-        if (fullImageUrl && !fullImageUrl.includes('via.placeholder.com')) {
-            openCropModal(fullImageUrl, { type: 'ultraman', imageType: 'avatar' });
-        } else {
-            alert('请先选择全身照');
-        }
-    });
-    
-    // 奥特曼全身照选择处理
-    document.getElementById('ultramanImage').addEventListener('change', function(e) {
-        handleImageSelection(e, { type: 'ultraman', imageType: 'full' });
-    });
-    
-    // 奥特曼头像选择处理
-    document.getElementById('ultramanAvatar').addEventListener('change', function(e) {
-        handleImageSelection(e, { type: 'ultraman', imageType: 'avatar' });
-    });
-    
-    // 形态图片选择处理 - 使用事件委托
-    document.getElementById('formsContainer').addEventListener('click', function(e) {
-        if (e.target.classList.contains('select-form-image')) {
-            const formContainer = e.target.closest('.form-section-container');
-            const formIndex = formContainer.getAttribute('data-form-index');
-            const fileInput = formContainer.querySelector('input[type="file"][accept="image/*"]:first-of-type');
-            fileInput.click();
-            
-            // 存储当前形态索引
-            fileInput.setAttribute('data-form-index', formIndex);
-            fileInput.setAttribute('data-image-type', 'full');
-        } else if (e.target.classList.contains('select-form-avatar')) {
-            const formContainer = e.target.closest('.form-section-container');
-            const formIndex = formContainer.getAttribute('data-form-index');
-            const fileInputs = formContainer.querySelectorAll('input[type="file"][accept="image/*"]');
-            const avatarInput = fileInputs[1];
-            avatarInput.click();
-            
-            // 存储当前形态索引
-            avatarInput.setAttribute('data-form-index', formIndex);
-            avatarInput.setAttribute('data-image-type', 'avatar');
-        } else if (e.target.classList.contains('crop-form-from-full')) {
-            const formContainer = e.target.closest('.form-section-container');
-            const formIndex = formContainer.getAttribute('data-form-index');
-            const fullImageUrl = formContainer.querySelector('.image-preview').src;
-            
-            if (fullImageUrl && !fullImageUrl.includes('via.placeholder.com')) {
-                openCropModal(fullImageUrl, { type: 'form', formIndex: formIndex, imageType: 'avatar' });
-            } else {
-                alert('请先选择全身照');
-            }
-        }
-    });
-    
-    // 形态图片选择处理
-    document.getElementById('formsContainer').addEventListener('change', function(e) {
-        if (e.target.type === 'file') {
-            const formIndex = e.target.getAttribute('data-form-index');
-            const imageType = e.target.getAttribute('data-image-type');
-            handleImageSelection(e, { type: 'form', formIndex: formIndex, imageType: imageType });
-        }
-    });
-    
-    // 显示/隐藏表单
-    document.getElementById('toggleFormBtn').addEventListener('click', function() {
-        const formContainer = document.getElementById('ultramanFormContainer');
-        const isVisible = formContainer.style.display !== 'none';
-        formContainer.style.display = isVisible ? 'none' : 'block';
-        this.textContent = isVisible ? '显示表单' : '隐藏表单';
-    });
-    
-    // 首页添加按钮
-    document.getElementById('homeAddBtn').addEventListener('click', function() {
-        resetForm();
-        const formContainer = document.getElementById('ultramanFormContainer');
-        formContainer.style.display = 'block';
-        document.getElementById('toggleFormBtn').textContent = '隐藏表单';
-        // 滚动到表单位置
-        document.getElementById('addUltramanSection').scrollIntoView({ behavior: 'smooth' });
-    });
-    
-    // 添加形态按钮
-    document.getElementById('addFormBtn').addEventListener('click', function() {
-        addFormSection();
-    });
-    
-    // 表单提交
-    document.getElementById('ultramanForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        if (isEditing) {
-            updateUltraman(currentEditingId);
-        } else {
-            saveUltraman();
-        }
-    });
-    
-    // 图片查看模态框
-    const imageViewerModal = document.getElementById('imageViewerModal');
-    const largeImage = document.getElementById('largeImage');
-    const closeImageViewer = imageViewerModal.querySelector('.close-btn');
-    
-    closeImageViewer.addEventListener('click', function() {
-        imageViewerModal.style.display = 'none';
-    });
-    
-    // 点击模态框背景关闭大图查看
-    imageViewerModal.addEventListener('click', function(e) {
-        if (e.target === imageViewerModal) {
-            imageViewerModal.style.display = 'none';
-        }
-    });
-    
-    // 奥特曼详情模态框
-    const ultramanModal = document.getElementById('ultramanModal');
-    const closeUltramanModal = ultramanModal.querySelector('.close-btn');
-    
-    closeUltramanModal.addEventListener('click', function() {
-        ultramanModal.style.display = 'none';
+  // 先尝试加载Bmob SDK，再初始化应用
+  loadBmobSDK()
+    .then(() => {
+      // 初始化Bmob
+      Bmob.initialize(appConfig.bmobAppId, appConfig.bmobRestApiKey);
+      isBmobAvailable = true;
+      console.log('Bmob初始化成功');
+    })
+    .catch(error => {
+      console.warn('Bmob不可用，将使用本地存储:', error);
+      isBmobAvailable = false;
+      if (!appConfig.useLocalStorageFallback) {
+        alert('数据存储服务不可用，应用可能无法正常工作');
+      }
+    })
+    .finally(() => {
+      // 无论Bmob是否可用，都初始化应用
+      initApp();
+      setupEventListeners();
     });
 });
 
-// 初始化应用
+// 应用初始化
 function initApp() {
-    // 从本地存储加载数据
-    loadUltramans();
-    
-    // 渲染奥特曼卡片
-    renderUltramanGrid();
-    
-    // 渲染战力排行
-    renderPowerRankings();
+  // 根据Bmob是否可用选择加载方式
+  if (isBmobAvailable) {
+    loadUltramansFromBmob();
+    // 每30秒自动刷新一次数据，保持同步
+    setInterval(loadUltramansFromBmob, 30000);
+  } else if (appConfig.useLocalStorageFallback) {
+    loadUltramansFromLocalStorage();
+  }
+  
+  renderUltramanGrid();
+  renderPowerRankings();
 }
 
-// 打开裁剪模态框
-function openCropModal(imageUrl, target) {
-    currentCroppingTarget = target;
-    const cropImage = document.getElementById('cropImage');
-    cropImage.src = imageUrl;
+// 设置事件监听器
+function setupEventListeners() {
+  // 添加奥特曼按钮事件
+  document.getElementById('addUltramanBtn').addEventListener('click', function() {
+    currentEditIndex = -1;
+    resetUltramanForm();
+    document.getElementById('ultramanModal').classList.remove('hidden');
+  });
+  
+  // 表单提交事件
+  document.getElementById('ultramanForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    saveUltramanForm();
+  });
+  
+  // 关闭模态框事件
+  document.getElementById('closeModal').addEventListener('click', function() {
+    document.getElementById('ultramanModal').classList.add('hidden');
+  });
+  
+  // 搜索功能事件
+  document.getElementById('searchInput').addEventListener('input', function(e) {
+    const searchTerm = e.target.value.toLowerCase();
+    filterUltramans(searchTerm);
+  });
+  
+  // 时代筛选事件
+  document.getElementById('eraFilter').addEventListener('change', function(e) {
+    const era = e.target.value;
+    filterByEra(era);
+  });
+}
+
+// 从Bmob数据库加载奥特曼数据
+function loadUltramansFromBmob() {
+  if (!isBmobAvailable) return;
+  
+  const Ultraman = Bmob.Object.extend("Ultraman");
+  const query = new Bmob.Query(Ultraman);
+  
+  query.find({
+    success: function(results) {
+      // 转换Bmob对象为普通JavaScript对象
+      ultramans = results.map(item => ({
+        id: item.id,
+        name: item.get('name'),
+        era: item.get('era'),
+        gender: item.get('gender'),
+        birthPlace: item.get('birthPlace'),
+        race: item.get('race'),
+        debutYear: item.get('debutYear'),
+        avatarUrl: item.get('avatarUrl'),
+        imageUrl: item.get('imageUrl'),
+        power: item.get('power') || 0,
+        forms: item.get('forms') || []
+      }));
+      
+      // 同时保存到本地存储作为备份
+      saveUltramansToLocalStorage();
+      
+      // 刷新页面显示
+      renderUltramanGrid();
+      renderPowerRankings();
+      console.log("数据已从Bmob同步");
+    },
+    error: function(error) {
+      console.error("从Bmob加载数据失败：", error);
+      // 失败时使用本地存储备份
+      loadUltramansFromLocalStorage();
+    }
+  });
+}
+
+// 从本地存储加载数据
+function loadUltramansFromLocalStorage() {
+  const localData = localStorage.getItem('ultramans');
+  if (localData) {
+    try {
+      ultramans = JSON.parse(localData);
+      renderUltramanGrid();
+      renderPowerRankings();
+      console.log("数据已从本地存储加载");
+    } catch (e) {
+      console.error("解析本地存储数据失败：", e);
+      ultramans = [];
+    }
+  }
+}
+
+// 保存数据到本地存储
+function saveUltramansToLocalStorage() {
+  try {
+    localStorage.setItem('ultramans', JSON.stringify(ultramans));
+    console.log("数据已保存到本地存储");
+  } catch (e) {
+    console.error("保存到本地存储失败：", e);
+  }
+}
+
+// 保存数据到Bmob数据库或本地存储
+function saveUltramans() {
+  // 始终保存到本地存储作为备份
+  saveUltramansToLocalStorage();
+  
+  // 如果Bmob可用，同步到Bmob
+  if (isBmobAvailable) {
+    const Ultraman = Bmob.Object.extend("Ultraman");
+    const query = new Bmob.Query(Ultraman);
     
-    // 显示裁剪模态框
-    document.getElementById('cropModal').style.display = 'block';
-    
-    // 初始化裁剪器
-    setTimeout(() => {
-        if (cropper) {
-            cropper.destroy();
-        }
-        cropper = new Cropper(cropImage, {
-            aspectRatio: 1, // 头像是正方形
-            viewMode: 1,
-            guides: true,
-            center: true,
-            autoCropArea: 0.8,
-            responsive: true
+    // 先清空现有数据
+    query.destroyAll({
+      success: function() {
+        // 批量保存新数据
+        const batch = new Bmob.Batch();
+        
+        ultramans.forEach(ultraman => {
+          const obj = new Ultraman();
+          if (ultraman.id) {
+            obj.set('objectId', ultraman.id);
+          }
+          
+          // 设置所有字段
+          obj.set('name', ultraman.name);
+          obj.set('era', ultraman.era);
+          obj.set('gender', ultraman.gender);
+          obj.set('birthPlace', ultraman.birthPlace);
+          obj.set('race', ultraman.race);
+          obj.set('debutYear', ultraman.debutYear);
+          obj.set('avatarUrl', ultraman.avatarUrl);
+          obj.set('imageUrl', ultraman.imageUrl);
+          obj.set('power', ultraman.power);
+          obj.set('forms', ultraman.forms);
+          
+          batch.save(obj);
         });
-    }, 100);
-}
-
-// 处理图片选择和裁剪
-function handleImageSelection(event, target) {
-    const file = event.target.files[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        if (target.imageType === 'avatar') {
-            // 对于头像，直接打开裁剪模态框
-            openCropModal(e.target.result, target);
-        } else {
-            // 对于全身照，直接设置预览
-            if (target.type === 'ultraman') {
-                document.getElementById('ultramanImagePreview').src = e.target.result;
-            } else if (target.type === 'form') {
-                const formContainer = document.querySelector(`[data-form-index="${target.formIndex}"]`);
-                formContainer.querySelector('.image-preview').src = e.target.result;
-            }
-        }
-    };
-    reader.readAsDataURL(file);
-}
-
-// 添加形态表单
-function addFormSection() {
-    const formsContainer = document.getElementById('formsContainer');
-    const formCount = formsContainer.children.length;
-    const formIndex = formCount;
-    
-    const formSection = document.createElement('div');
-    formSection.className = 'form-section-container';
-    formSection.setAttribute('data-form-index', formIndex);
-    
-    formSection.innerHTML = `
-        <div class="form-section-title">
-            <h4>形态 ${formCount}</h4>
-            <button type="button" class="remove-form-btn">删除</button>
-        </div>
         
-        <div class="image-upload-group">
-            <div class="image-upload">
-                <h5>全身照</h5>
-                <img src="https://via.placeholder.com/200x250/e2e8f0/4a5568?text=形态全身照" class="image-preview" alt="形态全身照预览">
-                <input type="file" accept="image/*" style="display: none;" data-form-index="${formIndex}" data-image-type="full">
-                <button type="button" class="btn btn-secondary select-form-image">选择全身照</button>
-            </div>
-            <div class="image-upload">
-                <h5>头像</h5>
-                <img src="https://via.placeholder.com/150x150/e2e8f0/4a5568?text=形态头像" class="avatar-preview" alt="形态头像预览">
-                <input type="file" accept="image/*" style="display: none;" data-form-index="${formIndex}" data-image-type="avatar">
-                <button type="button" class="btn btn-secondary select-form-avatar">选择头像</button>
-                <button type="button" class="btn btn-secondary crop-form-from-full">从全身照截取</button>
-            </div>
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label>形态名称 *</label>
-                <input type="text" class="form-name-input" required>
-            </div>
-            <div class="form-group">
-                <label>战力等级 *</label>
-                <select class="form-power-level-input" required>
-                    <option value="">请选择</option>
-                    <option value="T0">T0</option>
-                    <option value="T1">T1</option>
-                    <option value="T2">T2</option>
-                    <option value="T3">T3</option>
-                    <option value="T4">T4</option>
-                </select>
-            </div>
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label>身高</label>
-                <input type="text" class="form-height-input">
-            </div>
-            <div class="form-group">
-                <label>体重</label>
-                <input type="text" class="form-weight-input">
-            </div>
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label>飞行速度</label>
-                <input type="text" class="form-flight-speed-input">
-            </div>
-            <div class="form-group">
-                <label>行走速度</label>
-                <input type="text" class="form-running-speed-input">
-            </div>
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label>水中速度</label>
-                <input type="text" class="form-swimming-speed-input">
-            </div>
-            <div class="form-group">
-                <label>跳跃力</label>
-                <input type="text" class="form-jumping-power-input">
-            </div>
-        </div>
-        
-        <div class="form-row">
-            <div class="form-group">
-                <label>腕力</label>
-                <input type="text" class="form-arm-strength-input">
-            </div>
-            <div class="form-group">
-                <label>握力</label>
-                <input type="text" class="form-grip-strength-input">
-            </div>
-        </div>
-        
-        <div class="form-group">
-            <label>必杀技</label>
-            <textarea class="form-skills-input"></textarea>
-        </div>
-        
-        <div class="form-group">
-            <label>形态描述</label>
-            <textarea class="form-description-input"></textarea>
-        </div>
-    `;
-    
-    formsContainer.appendChild(formSection);
-    
-    // 添加删除事件
-    const removeBtn = formSection.querySelector('.remove-form-btn');
-    removeBtn.addEventListener('click', function() {
-        formsContainer.removeChild(formSection);
+        // 提交批量操作
+        batch.commit().then(() => {
+          console.log("数据已成功同步到Bmob");
+          // 同步成功后重新加载数据以获取最新的ID
+          loadUltramansFromBmob();
+        }).catch(error => {
+          console.error("同步到Bmob失败：", error);
+          alert("数据同步到云端失败，但已保存到本地");
+        });
+      },
+      error: function(error) {
+        console.error("清空Bmob旧数据失败：", error);
+        alert("更新云端数据失败，但已保存到本地");
+      }
     });
-}
-
-// 重置表单
-function resetForm() {
-    isEditing = false;
-    currentEditingId = null;
-    document.getElementById('saveUltramanBtn').textContent = '保存奥特曼信息';
-    
-    // 重置形态表单
-    const formsContainer = document.getElementById('formsContainer');
-    formsContainer.innerHTML = `
-        <div class="form-section-container" data-form-index="0">
-            <h4>基础形态</h4>
-            
-            <div class="image-upload-group">
-                <div class="image-upload">
-                    <h5>全身照</h5>
-                    <img id="baseFormImagePreview" src="https://via.placeholder.com/200x250/e2e8f0/4a5568?text=基础形态全身照" class="image-preview" alt="基础形态全身照预览">
-                    <input type="file" id="baseFormImage" accept="image/*" style="display: none;">
-                    <button type="button" class="btn btn-secondary select-form-image">选择全身照</button>
-                </div>
-                <div class="image-upload">
-                    <h5>头像</h5>
-                    <img id="baseFormAvatarPreview" src="https://via.placeholder.com/150x150/e2e8f0/4a5568?text=基础形态头像" class="avatar-preview" alt="基础形态头像预览">
-                    <input type="file" id="baseFormAvatar" accept="image/*" style="display: none;">
-                    <button type="button" class="btn btn-secondary select-form-avatar">选择头像</button>
-                    <button type="button" class="btn btn-secondary crop-form-from-full">从全身照截取</button>
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="baseFormName">形态名称 *</label>
-                    <input type="text" id="baseFormName" required>
-                </div>
-                <div class="form-group">
-                    <label for="baseFormPowerLevel">战力等级 *</label>
-                    <select id="baseFormPowerLevel" required>
-                        <option value="">请选择</option>
-                        <option value="T0">T0</option>
-                        <option value="T1">T1</option>
-                        <option value="T2">T2</option>
-                        <option value="T3">T3</option>
-                        <option value="T4">T4</option>
-                    </select>
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="baseFormHeight">身高</label>
-                    <input type="text" id="baseFormHeight">
-                </div>
-                <div class="form-group">
-                    <label for="baseFormWeight">体重</label>
-                    <input type="text" id="baseFormWeight">
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="baseFormFlightSpeed">飞行速度</label>
-                    <input type="text" id="baseFormFlightSpeed">
-                </div>
-                <div class="form-group">
-                    <label for="baseFormRunningSpeed">行走速度</label>
-                    <input type="text" id="baseFormRunningSpeed">
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="baseFormSwimmingSpeed">水中速度</label>
-                    <input type="text" id="baseFormSwimmingSpeed">
-                </div>
-                <div class="form-group">
-                    <label for="baseFormJumpingPower">跳跃力</label>
-                    <input type="text" id="baseFormJumpingPower">
-                </div>
-            </div>
-            
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="baseFormArmStrength">腕力</label>
-                    <input type="text" id="baseFormArmStrength">
-                </div>
-                <div class="form-group">
-                    <label for="baseFormGripStrength">握力</label>
-                    <input type="text" id="baseFormGripStrength">
-                </div>
-            </div>
-            
-            <div class="form-group">
-                <label for="baseFormSkills">必杀技</label>
-                <textarea id="baseFormSkills"></textarea>
-            </div>
-            
-            <div class="form-group">
-                <label for="baseFormDescription">形态描述</label>
-                <textarea id="baseFormDescription"></textarea>
-            </div>
-        </div>
-    `;
-}
-
-// 保存奥特曼信息
-function saveUltraman() {
-    // 获取基本信息
-    const ultraman = {
-        id: `ultra-${Date.now()}`,
-        name: document.getElementById('ultramanName').value,
-        era: document.getElementById('ultramanEra').value,
-        gender: document.getElementById('ultramanGender').value,
-        age: document.getElementById('ultramanAge').value,
-        birthPlace: document.getElementById('ultramanBirthPlace').value,
-        race: document.getElementById('ultramanRace').value,
-        debutYear: document.getElementById('ultramanDebutYear').value,
-        appearance: document.getElementById('ultramanAppearance').value,
-        humanForm: document.getElementById('ultramanHumanForm').value,
-        transformer: document.getElementById('ultramanTransformer').value,
-        description: document.getElementById('ultramanDescription').value,
-        imageUrl: document.getElementById('ultramanImagePreview').src,
-        avatarUrl: document.getElementById('ultramanAvatarPreview').src,
-        
-        // 新增物理属性
-        height: document.getElementById('ultramanHeight').value,
-        weight: document.getElementById('ultramanWeight').value,
-        flightSpeed: document.getElementById('ultramanFlightSpeed').value,
-        runningSpeed: document.getElementById('ultramanRunningSpeed').value,
-        swimmingSpeed: document.getElementById('ultramanSwimmingSpeed').value,
-        jumpingPower: document.getElementById('ultramanJumpingPower').value,
-        armStrength: document.getElementById('ultramanArmStrength').value,
-        gripStrength: document.getElementById('ultramanGripStrength').value,
-        skills: document.getElementById('ultramanSkills').value,
-        
-        forms: []
-    };
-    
-    // 获取所有形态信息
-    const formContainers = document.querySelectorAll('.form-section-container');
-    formContainers.forEach(container => {
-        const formIndex = container.getAttribute('data-form-index');
-        const form = {
-            name: container.querySelector('.form-name-input') ? container.querySelector('.form-name-input').value : document.getElementById('baseFormName').value,
-            powerLevel: container.querySelector('.form-power-level-input') ? container.querySelector('.form-power-level-input').value : document.getElementById('baseFormPowerLevel').value,
-            
-            // 形态物理属性
-            height: container.querySelector('.form-height-input') ? container.querySelector('.form-height-input').value : document.getElementById('baseFormHeight').value,
-            weight: container.querySelector('.form-weight-input') ? container.querySelector('.form-weight-input').value : document.getElementById('baseFormWeight').value,
-            flightSpeed: container.querySelector('.form-flight-speed-input') ? container.querySelector('.form-flight-speed-input').value : document.getElementById('baseFormFlightSpeed').value,
-            runningSpeed: container.querySelector('.form-running-speed-input') ? container.querySelector('.form-running-speed-input').value : document.getElementById('baseFormRunningSpeed').value,
-            swimmingSpeed: container.querySelector('.form-swimming-speed-input') ? container.querySelector('.form-swimming-speed-input').value : document.getElementById('baseFormSwimmingSpeed').value,
-            jumpingPower: container.querySelector('.form-jumping-power-input') ? container.querySelector('.form-jumping-power-input').value : document.getElementById('baseFormJumpingPower').value,
-            armStrength: container.querySelector('.form-arm-strength-input') ? container.querySelector('.form-arm-strength-input').value : document.getElementById('baseFormArmStrength').value,
-            gripStrength: container.querySelector('.form-grip-strength-input') ? container.querySelector('.form-grip-strength-input').value : document.getElementById('baseFormGripStrength').value,
-            
-            skills: container.querySelector('.form-skills-input') ? container.querySelector('.form-skills-input').value : document.getElementById('baseFormSkills').value,
-            description: container.querySelector('.form-description-input') ? container.querySelector('.form-description-input').value : document.getElementById('baseFormDescription').value,
-            imageUrl: container.querySelector('.image-preview').src,
-            avatarUrl: container.querySelector('.avatar-preview').src
-        };
-        
-        ultraman.forms.push(form);
-    });
-    
-    // 添加到数组并保存
-    ultramans.push(ultraman);
-    saveUltramans();
-    
-    // 更新UI
+  } else if (appConfig.useLocalStorageFallback) {
+    // 仅使用本地存储时，刷新界面
     renderUltramanGrid();
     renderPowerRankings();
-    
-    // 重置表单
-    document.getElementById('ultramanForm').reset();
-    document.getElementById('ultramanImagePreview').src = 'https://via.placeholder.com/200x250/e2e8f0/4a5568?text=奥特曼全身照';
-    document.getElementById('ultramanAvatarPreview').src = 'https://via.placeholder.com/150x150/e2e8f0/4a5568?text=奥特曼头像';
-    
-    resetForm();
-    
-    alert('奥特曼信息保存成功！');
+    alert("数据已保存到本地");
+  }
 }
 
 // 渲染奥特曼网格
 function renderUltramanGrid() {
-    const grid = document.getElementById('ultramanGrid');
-    grid.innerHTML = '';
-    
-    // 应用筛选器
-    const eraFilter = document.getElementById('eraFilter').value;
-    const genderFilter = document.getElementById('genderFilter').value;
-    const birthPlaceFilter = document.getElementById('birthPlaceFilter').value;
-    const raceFilter = document.getElementById('raceFilter').value;
-    const sortFilter = document.getElementById('sortFilter').value;
-    
-    // 筛选奥特曼
-    let filteredUltramans = [...ultramans];
-    
-    if (eraFilter !== 'all') {
-        filteredUltramans = filteredUltramans.filter(u => u.era === eraFilter);
-    }
-    
-    if (genderFilter !== 'all') {
-        filteredUltramans = filteredUltramans.filter(u => u.gender === genderFilter);
-    }
-    
-    if (birthPlaceFilter !== 'all') {
-        filteredUltramans = filteredUltramans.filter(u => u.birthPlace === birthPlaceFilter);
-    }
-    
-    if (raceFilter !== 'all') {
-        filteredUltramans = filteredUltramans.filter(u => u.race === raceFilter);
-    }
-    
-    // 排序
-    if (sortFilter === 'debutYear') {
-        filteredUltramans.sort((a, b) => a.debutYear - b.debutYear);
-    } else if (sortFilter === 'name') {
-        filteredUltramans.sort((a, b) => a.name.localeCompare(b.name));
-    }
-    
-    // 创建卡片
-    filteredUltramans.forEach(ultraman => {
-        const card = document.createElement('div');
-        card.className = 'ultraman-card';
-        card.innerHTML = `
-            <img src="${ultraman.avatarUrl}" alt="${ultraman.name}" class="ultraman-img" data-id="${ultraman.id}">
-            <div class="ultraman-info">
-                <h3 class="ultraman-name">${ultraman.name}</h3>
-                <p class="ultraman-era">${ultraman.era} · ${ultraman.debutYear}年登场</p>
-                ${ultraman.forms && ultraman.forms.length > 1 ? `<p class="ultraman-forms">${ultraman.forms.length} 种形态</p>` : ''}
-            </div>
-        `;
-        
-        // 点击卡片查看详情
-        card.addEventListener('click', function(e) {
-            if (!e.target.classList.contains('ultraman-img')) {
-                showUltramanDetails(ultraman.id);
-            }
-        });
-        
-        // 点击图片查看大图
-        const img = card.querySelector('.ultraman-img');
-        img.addEventListener('click', function(e) {
-            e.stopPropagation();
-            showLargeImage(ultraman.avatarUrl);
-        });
-        
-        grid.appendChild(card);
-    });
-}
-
-// 渲染战力排行 - 修改头像为方形
-function renderPowerRankings() {
-    // 按战力等级分组
-    const tiers = {
-        T0: [],
-        T1: [],
-        T2: [],
-        T3: [],
-        T4: []
-    };
-    
-    ultramans.forEach(ultraman => {
-        // 使用第一个形态的战力等级
-        if (ultraman.forms && ultraman.forms.length > 0) {
-            const tier = ultraman.forms[0].powerLevel;
-            if (tiers[tier]) {
-                tiers[tier].push(ultraman);
-            }
-        }
-    });
-    
-    // 渲染各等级
-    for (const tier in tiers) {
-        const container = document.getElementById(`tier${tier.charAt(1)}Grid`);
-        container.innerHTML = '';
-        
-        tiers[tier].forEach(ultraman => {
-            const card = document.createElement('div');
-            card.className = 'ranking-card';
-            // 使用第一个形态的头像
-            const formAvatar = ultraman.forms && ultraman.forms.length > 0 ? ultraman.forms[0].avatarUrl : ultraman.avatarUrl;
-            card.innerHTML = `
-                <img src="${formAvatar}" alt="${ultraman.name}" data-id="${ultraman.id}" class="ranking-avatar">
-                <h4>${ultraman.name}</h4>
-                <p>${ultraman.forms && ultraman.forms.length > 0 ? ultraman.forms[0].name : '基础形态'}</p>
-            `;
-            
-            // 点击卡片查看详情
-            card.addEventListener('click', function(e) {
-                if (e.target.tagName !== 'IMG') {
-                    showUltramanDetails(ultraman.id);
-                }
-            });
-            
-            // 点击图片查看大图
-            const img = card.querySelector('img');
-            img.addEventListener('click', function(e) {
-                e.stopPropagation();
-                showLargeImage(formAvatar);
-            });
-            
-            container.appendChild(card);
-        });
-    }
-}
-
-// 显示奥特曼详情
-function showUltramanDetails(id) {
-    const ultraman = ultramans.find(u => u.id === id);
-    if (!ultraman) return;
-    
-    const modalTitle = document.getElementById('modalUltramanName');
-    const detailsContainer = document.getElementById('ultramanDetails');
-    
-    modalTitle.textContent = ultraman.name;
-    
-    // 生成形态信息HTML
-    let formsHTML = '';
-    if (ultraman.forms && ultraman.forms.length > 0) {
-        formsHTML = `
-            <h3>形态信息</h3>
-            <div class="forms-grid">
-                ${ultraman.forms.map(form => `
-                    <div class="form-card">
-                        <img src="${form.avatarUrl}" alt="${form.name}">
-                        <h4>${form.name}</h4>
-                        <p>战力等级: ${form.powerLevel}</p>
-                        <p>${form.height || '未知'} / ${form.weight || '未知'}</p>
-                    </div>
-                `).join('')}
-            </div>
-        `;
-    }
-    
-    detailsContainer.innerHTML = `
-        <div style="display: flex; flex-wrap: wrap; gap: 30px;">
-            <div style="flex: 1; min-width: 250px;">
-                <img src="${ultraman.imageUrl}" alt="${ultraman.name}" style="width: 100%; border-radius: 10px;">
-            </div>
-            <div style="flex: 2; min-width: 300px;">
-                <h3>基本信息</h3>
-                <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; width: 30%;"><strong>年代</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.era}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>性别</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.gender}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>年龄</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.age || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>出生地</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.birthPlace}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>种族</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.race || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>首次登场</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.debutYear}年 (${ultraman.appearance || '未知'})</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>人间体</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.humanForm || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>变身器</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.transformer || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>身高</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.height || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>体重</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.weight || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>飞行速度</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.flightSpeed || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>行走速度</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.runningSpeed || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>水中速度</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.swimmingSpeed || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>跳跃力</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.jumpingPower || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>腕力</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.armStrength || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>握力</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.gripStrength || '未知'}</td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;"><strong>技能</strong></td>
-                        <td style="padding: 8px; border-bottom: 1px solid #e2e8f0;">${ultraman.skills || '未知'}</td>
-                    </tr>
-                </table>
-                
-                ${formsHTML}
-                
-                <h3>角色介绍</h3>
-                <p style="line-height: 1.6;">${ultraman.description || '暂无数据'}</p>
-                
-                ${isDeveloperMode ? `
-                    <div class="edit-buttons">
-                        <button class="edit-btn" onclick="editUltraman('${ultraman.id}')">编辑信息</button>
-                        <button class="delete-btn" onclick="deleteUltraman('${ultraman.id}')">删除奥特曼</button>
-                    </div>
-                ` : ''}
-            </div>
+  const gridContainer = document.getElementById('ultramanGrid');
+  gridContainer.innerHTML = '';
+  
+  if (ultramans.length === 0) {
+    gridContainer.innerHTML = '<p class="text-center text-gray-500">暂无奥特曼数据，请添加新的奥特曼</p>';
+    return;
+  }
+  
+  ultramans.forEach((ultraman, index) => {
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-lg shadow-md overflow-hidden transform transition duration-300 hover:scale-105';
+    card.innerHTML = `
+      <div class="relative">
+        <img src="${ultraman.imageUrl || 'default-ultraman.jpg'}" alt="${ultraman.name}" class="w-full h-48 object-cover">
+        <div class="absolute top-2 right-2 flex space-x-1">
+          <button onclick="editUltraman(${index})" class="bg-yellow-500 p-1 rounded-full text-white hover:bg-yellow-600">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button onclick="deleteUltraman('${ultraman.id}')" class="bg-red-500 p-1 rounded-full text-white hover:bg-red-600">
+            <i class="fas fa-trash"></i>
+          </button>
         </div>
+      </div>
+      <div class="p-4">
+        <h3 class="text-xl font-bold text-gray-800">${ultraman.name}</h3>
+        <p class="text-gray-600">${ultraman.era} · ${ultraman.debutYear}年</p>
+        <div class="mt-2 flex justify-between items-center">
+          <span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">战斗力: ${ultraman.power}</span>
+          <button onclick="viewUltramanDetails('${ultraman.id}')" class="text-indigo-600 hover:text-indigo-800 text-sm">
+            查看详情 <i class="fas fa-arrow-right ml-1"></i>
+          </button>
+        </div>
+      </div>
     `;
-    
-    document.getElementById('ultramanModal').style.display = 'block';
+    gridContainer.appendChild(card);
+  });
 }
 
-// 编辑奥特曼信息
-function editUltraman(id) {
-    const ultraman = ultramans.find(u => u.id === id);
-    if (!ultraman) return;
-    
-    isEditing = true;
-    currentEditingId = id;
-    document.getElementById('saveUltramanBtn').textContent = '更新奥特曼信息';
-    
-    // 填充表单数据
-    document.getElementById('ultramanName').value = ultraman.name;
-    document.getElementById('ultramanEra').value = ultraman.era;
-    document.getElementById('ultramanGender').value = ultraman.gender;
-    document.getElementById('ultramanAge').value = ultraman.age || '';
-    document.getElementById('ultramanBirthPlace').value = ultraman.birthPlace;
-    document.getElementById('ultramanRace').value = ultraman.race || '';
-    document.getElementById('ultramanDebutYear').value = ultraman.debutYear;
-    document.getElementById('ultramanAppearance').value = ultraman.appearance || '';
-    document.getElementById('ultramanHumanForm').value = ultraman.humanForm || '';
-    document.getElementById('ultramanTransformer').value = ultraman.transformer || '';
-    document.getElementById('ultramanDescription').value = ultraman.description || '';
-    document.getElementById('ultramanImagePreview').src = ultraman.imageUrl;
-    document.getElementById('ultramanAvatarPreview').src = ultraman.avatarUrl;
-    
-    // 填充物理属性
-    document.getElementById('ultramanHeight').value = ultraman.height || '';
-    document.getElementById('ultramanWeight').value = ultraman.weight || '';
-    document.getElementById('ultramanFlightSpeed').value = ultraman.flightSpeed || '';
-    document.getElementById('ultramanRunningSpeed').value = ultraman.runningSpeed || '';
-    document.getElementById('ultramanSwimmingSpeed').value = ultraman.swimmingSpeed || '';
-    document.getElementById('ultramanJumpingPower').value = ultraman.jumpingPower || '';
-    document.getElementById('ultramanArmStrength').value = ultraman.armStrength || '';
-    document.getElementById('ultramanGripStrength').value = ultraman.gripStrength || '';
-    document.getElementById('ultramanSkills').value = ultraman.skills || '';
-    
-    // 填充形态信息
-    const formsContainer = document.getElementById('formsContainer');
-    formsContainer.innerHTML = '';
-    
-    if (ultraman.forms && ultraman.forms.length > 0) {
-        ultraman.forms.forEach((form, index) => {
-            const formSection = document.createElement('div');
-            formSection.className = 'form-section-container';
-            formSection.setAttribute('data-form-index', index);
-            
-            formSection.innerHTML = `
-                <div class="form-section-title">
-                    <h4>${index === 0 ? '基础形态' : '形态 ' + (index + 1)}</h4>
-                    ${index > 0 ? '<button type="button" class="remove-form-btn">删除</button>' : ''}
-                </div>
-                
-                <div class="image-upload-group">
-                    <div class="image-upload">
-                        <h5>全身照</h5>
-                        <img src="${form.imageUrl}" class="image-preview" alt="形态全身照预览">
-                        <input type="file" accept="image/*" style="display: none;" data-form-index="${index}" data-image-type="full">
-                        <button type="button" class="btn btn-secondary select-form-image">选择全身照</button>
-                    </div>
-                    <div class="image-upload">
-                        <h5>头像</h5>
-                        <img src="${form.avatarUrl}" class="avatar-preview" alt="形态头像预览">
-                        <input type="file" accept="image/*" style="display: none;" data-form-index="${index}" data-image-type="avatar">
-                        <button type="button" class="btn btn-secondary select-form-avatar">选择头像</button>
-                        <button type="button" class="btn btn-secondary crop-form-from-full">从全身照截取</button>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>形态名称 *</label>
-                        <input type="text" class="form-name-input" value="${form.name}" required>
-                    </div>
-                    <div class="form-group">
-                        <label>战力等级 *</label>
-                        <select class="form-power-level-input" required>
-                            <option value="">请选择</option>
-                            <option value="T0" ${form.powerLevel === 'T0' ? 'selected' : ''}>T0</option>
-                            <option value="T1" ${form.powerLevel === 'T1' ? 'selected' : ''}>T1</option>
-                            <option value="T2" ${form.powerLevel === 'T2' ? 'selected' : ''}>T2</option>
-                            <option value="T3" ${form.powerLevel === 'T3' ? 'selected' : ''}>T3</option>
-                            <option value="T4" ${form.powerLevel === 'T4' ? 'selected' : ''}>T4</option>
-                        </select>
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>身高</label>
-                        <input type="text" class="form-height-input" value="${form.height || ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>体重</label>
-                        <input type="text" class="form-weight-input" value="${form.weight || ''}">
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>飞行速度</label>
-                        <input type="text" class="form-flight-speed-input" value="${form.flightSpeed || ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>行走速度</label>
-                        <input type="text" class="form-running-speed-input" value="${form.runningSpeed || ''}">
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>水中速度</label>
-                        <input type="text" class="form-swimming-speed-input" value="${form.swimmingSpeed || ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>跳跃力</label>
-                        <input type="text" class="form-jumping-power-input" value="${form.jumpingPower || ''}">
-                    </div>
-                </div>
-                
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>腕力</label>
-                        <input type="text" class="form-arm-strength-input" value="${form.armStrength || ''}">
-                    </div>
-                    <div class="form-group">
-                        <label>握力</label>
-                        <input type="text" class="form-grip-strength-input" value="${form.gripStrength || ''}">
-                    </div>
-                </div>
-                
-                <div class="form-group">
-                    <label>必杀技</label>
-                    <textarea class="form-skills-input">${form.skills || ''}</textarea>
-                </div>
-                
-                <div class="form-group">
-                    <label>形态描述</label>
-                    <textarea class="form-description-input">${form.description || ''}</textarea>
-                </div>
-            `;
-            
-            formsContainer.appendChild(formSection);
-            
-            // 添加删除事件
-            if (index > 0) {
-                const removeBtn = formSection.querySelector('.remove-form-btn');
-                removeBtn.addEventListener('click', function() {
-                    formsContainer.removeChild(formSection);
-                });
-            }
-        });
-    }
-    
-    // 显示表单
-    document.getElementById('ultramanFormContainer').style.display = 'block';
-    document.getElementById('toggleFormBtn').textContent = '隐藏表单';
-    
-    // 滚动到表单
-    document.getElementById('addUltramanSection').scrollIntoView({ behavior: 'smooth' });
-    
-    // 关闭详情模态框
-    document.getElementById('ultramanModal').style.display = 'none';
+// 渲染实力排行榜
+function renderPowerRankings() {
+  const rankingsContainer = document.getElementById('powerRankings');
+  rankingsContainer.innerHTML = '';
+  
+  // 按战斗力排序
+  const sortedUltramans = [...ultramans].sort((a, b) => b.power - a.power).slice(0, 5);
+  
+  sortedUltramans.forEach((ultraman, index) => {
+    const item = document.createElement('div');
+    item.className = `flex items-center p-2 ${index === 0 ? 'bg-yellow-50' : index === 1 ? 'bg-gray-50' : index === 2 ? 'bg-amber-50' : 'bg-white'}`;
+    item.innerHTML = `
+      <div class="w-8 h-8 flex items-center justify-center rounded-full ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-gray-100 text-gray-600' : index === 2 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-600'} font-bold">
+        ${index + 1}
+      </div>
+      <img src="${ultraman.avatarUrl || 'default-avatar.jpg'}" alt="${ultraman.name}" class="w-10 h-10 rounded-full mx-3 object-cover">
+      <span class="flex-grow font-medium">${ultraman.name}</span>
+      <span class="text-red-600 font-bold">${ultraman.power}</span>
+    `;
+    rankingsContainer.appendChild(item);
+  });
 }
 
-// 更新奥特曼信息
-function updateUltraman(id) {
-    const ultramanIndex = ultramans.findIndex(u => u.id === id);
-    if (ultramanIndex === -1) return;
-    
-    // 获取更新后的信息
-    const updatedUltraman = {
-        id: id,
-        name: document.getElementById('ultramanName').value,
-        era: document.getElementById('ultramanEra').value,
-        gender: document.getElementById('ultramanGender').value,
-        age: document.getElementById('ultramanAge').value,
-        birthPlace: document.getElementById('ultramanBirthPlace').value,
-        race: document.getElementById('ultramanRace').value,
-        debutYear: document.getElementById('ultramanDebutYear').value,
-        appearance: document.getElementById('ultramanAppearance').value,
-        humanForm: document.getElementById('ultramanHumanForm').value,
-        transformer: document.getElementById('ultramanTransformer').value,
-        description: document.getElementById('ultramanDescription').value,
-        imageUrl: document.getElementById('ultramanImagePreview').src,
-        avatarUrl: document.getElementById('ultramanAvatarPreview').src,
-        
-        // 物理属性
-        height: document.getElementById('ultramanHeight').value,
-        weight: document.getElementById('ultramanWeight').value,
-        flightSpeed: document.getElementById('ultramanFlightSpeed').value,
-        runningSpeed: document.getElementById('ultramanRunningSpeed').value,
-        swimmingSpeed: document.getElementById('ultramanSwimmingSpeed').value,
-        jumpingPower: document.getElementById('ultramanJumpingPower').value,
-        armStrength: document.getElementById('ultramanArmStrength').value,
-        gripStrength: document.getElementById('ultramanGripStrength').value,
-        skills: document.getElementById('ultramanSkills').value,
-        
-        forms: []
-    };
-    
-    // 获取所有形态信息
-    const formContainers = document.querySelectorAll('.form-section-container');
-    formContainers.forEach(container => {
-        const form = {
-            name: container.querySelector('.form-name-input').value,
-            powerLevel: container.querySelector('.form-power-level-input').value,
-            
-            // 形态物理属性
-            height: container.querySelector('.form-height-input').value,
-            weight: container.querySelector('.form-weight-input').value,
-            flightSpeed: container.querySelector('.form-flight-speed-input').value,
-            runningSpeed: container.querySelector('.form-running-speed-input').value,
-            swimmingSpeed: container.querySelector('.form-swimming-speed-input').value,
-            jumpingPower: container.querySelector('.form-jumping-power-input').value,
-            armStrength: container.querySelector('.form-arm-strength-input').value,
-            gripStrength: container.querySelector('.form-grip-strength-input').value,
-            
-            skills: container.querySelector('.form-skills-input').value,
-            description: container.querySelector('.form-description-input').value,
-            imageUrl: container.querySelector('.image-preview').src,
-            avatarUrl: container.querySelector('.avatar-preview').src
-        };
-        
-        updatedUltraman.forms.push(form);
+// 重置奥特曼表单
+function resetUltramanForm() {
+  document.getElementById('ultramanForm').reset();
+  document.getElementById('formTitle').textContent = '添加新奥特曼';
+  document.getElementById('formsContainer').innerHTML = '';
+  addFormField(); // 添加一个形态字段
+}
+
+// 保存奥特曼表单数据
+function saveUltramanForm() {
+  const name = document.getElementById('name').value;
+  const era = document.getElementById('era').value;
+  const gender = document.getElementById('gender').value;
+  const birthPlace = document.getElementById('birthPlace').value;
+  const race = document.getElementById('race').value;
+  const debutYear = document.getElementById('debutYear').value;
+  const avatarUrl = document.getElementById('avatarUrl').value;
+  const imageUrl = document.getElementById('imageUrl').value;
+  const power = parseInt(document.getElementById('power').value) || 0;
+  
+  // 收集形态数据
+  const formFields = document.querySelectorAll('.form-field');
+  const forms = Array.from(formFields).map(field => ({
+    name: field.querySelector('.form-name').value,
+    power: parseInt(field.querySelector('.form-power').value) || 0
+  })).filter(form => form.name.trim() !== '');
+  
+  if (!name || !era || !debutYear) {
+    alert('请填写必要的信息（名称、时代、登场年份）');
+    return;
+  }
+  
+  const ultramanData = {
+    name,
+    era,
+    gender,
+    birthPlace,
+    race,
+    debutYear,
+    avatarUrl,
+    imageUrl,
+    power,
+    forms
+  };
+  
+  if (currentEditIndex === -1) {
+    // 添加新奥特曼
+    ultramans.push(ultramanData);
+  } else {
+    // 更新现有奥特曼，保留ID
+    ultramanData.id = ultramans[currentEditIndex].id;
+    ultramans[currentEditIndex] = ultramanData;
+  }
+  
+  // 保存数据并刷新界面
+  saveUltramans();
+  document.getElementById('ultramanModal').classList.add('hidden');
+}
+
+// 编辑奥特曼
+function editUltraman(index) {
+  currentEditIndex = index;
+  const ultraman = ultramans[index];
+  
+  // 填充表单
+  document.getElementById('name').value = ultraman.name || '';
+  document.getElementById('era').value = ultraman.era || '';
+  document.getElementById('gender').value = ultraman.gender || '';
+  document.getElementById('birthPlace').value = ultraman.birthPlace || '';
+  document.getElementById('race').value = ultraman.race || '';
+  document.getElementById('debutYear').value = ultraman.debutYear || '';
+  document.getElementById('avatarUrl').value = ultraman.avatarUrl || '';
+  document.getElementById('imageUrl').value = ultraman.imageUrl || '';
+  document.getElementById('power').value = ultraman.power || 0;
+  document.getElementById('formTitle').textContent = '编辑奥特曼';
+  
+  // 填充形态数据
+  const formsContainer = document.getElementById('formsContainer');
+  formsContainer.innerHTML = '';
+  
+  if (ultraman.forms && ultraman.forms.length > 0) {
+    ultraman.forms.forEach(form => {
+      addFormField(form.name, form.power);
     });
-    
-    // 更新数组并保存
-    ultramans[ultramanIndex] = updatedUltraman;
-    saveUltramans();
-    
-    // 更新UI
-    renderUltramanGrid();
-    renderPowerRankings();
-    
-    alert('奥特曼信息更新成功！');
-    
-    resetForm();
+  } else {
+    addFormField();
+  }
+  
+  document.getElementById('ultramanModal').classList.remove('hidden');
 }
 
 // 删除奥特曼
 function deleteUltraman(id) {
-    if (confirm('确定要删除这个奥特曼吗？此操作不可撤销！')) {
-        ultramans = ultramans.filter(u => u.id !== id);
-        saveUltramans();
-        
-        // 更新UI
-        renderUltramanGrid();
-        renderPowerRankings();
-        
-        // 关闭详情模态框
-        document.getElementById('ultramanModal').style.display = 'none';
-        
-        alert('奥特曼删除成功！');
-    }
+  if (confirm('确定要删除这个奥特曼吗？')) {
+    ultramans = ultramans.filter(ultraman => ultraman.id !== id);
+    saveUltramans(); // 同步数据
+  }
 }
 
-// 显示大图
-function showLargeImage(url) {
-    document.getElementById('largeImage').src = url;
-    document.getElementById('imageViewerModal').style.display = 'block';
+// 查看奥特曼详情
+function viewUltramanDetails(id) {
+  const ultraman = ultramans.find(u => u.id === id);
+  if (!ultraman) return;
+  
+  const detailsContainer = document.getElementById('ultramanDetails');
+  detailsContainer.innerHTML = `
+    <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" id="detailsOverlay">
+      <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="relative">
+          <img src="${ultraman.imageUrl || 'default-ultraman.jpg'}" alt="${ultraman.name}" class="w-full h-64 object-cover">
+          <button onclick="closeDetails()" class="absolute top-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded-full">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="p-6">
+          <h2 class="text-3xl font-bold mb-4">${ultraman.name}</h2>
+          <div class="grid grid-cols-2 gap-4 mb-6">
+            <div>
+              <p class="text-gray-600">时代</p>
+              <p class="font-medium">${ultraman.era}</p>
+            </div>
+            <div>
+              <p class="text-gray-600">登场年份</p>
+              <p class="font-medium">${ultraman.debutYear}</p>
+            </div>
+            <div>
+              <p class="text-gray-600">出生地</p>
+              <p class="font-medium">${ultraman.birthPlace}</p>
+            </div>
+            <div>
+              <p class="text-gray-600">种族</p>
+              <p class="font-medium">${ultraman.race}</p>
+            </div>
+            <div>
+              <p class="text-gray-600">性别</p>
+              <p class="font-medium">${ultraman.gender}</p>
+            </div>
+            <div>
+              <p class="text-gray-600">战斗力</p>
+              <p class="font-medium text-red-600">${ultraman.power}</p>
+            </div>
+          </div>
+          
+          ${ultraman.forms && ultraman.forms.length > 0 ? `
+            <div class="mb-6">
+              <h3 class="text-xl font-bold mb-3">形态</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                ${ultraman.forms.map(form => `
+                  <div class="bg-gray-50 p-3 rounded-lg">
+                    <div class="flex justify-between items-center">
+                      <span class="font-medium">${form.name}</span>
+                      <span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">战斗力: ${form.power}</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
+          
+          <button onclick="editUltraman(${ultramans.findIndex(u => u.id === id)})" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600 mr-2">
+            <i class="fas fa-edit mr-1"></i> 编辑
+          </button>
+          <button onclick="deleteUltraman('${ultraman.id}'); closeDetails()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+            <i class="fas fa-trash mr-1"></i> 删除
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
 }
 
-// 搜索功能
-function performSearch() {
-    const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
-    if (!searchTerm) {
-        renderUltramanGrid();
-        return;
-    }
-    
-    const grid = document.getElementById('ultramanGrid');
-    grid.innerHTML = '';
-    
-    let foundResults = false;
-    
-    ultramans.forEach(ultraman => {
-        // 检查奥特曼名称和形态名称是否匹配搜索词
-        const nameMatch = ultraman.name.toLowerCase().includes(searchTerm);
-        
-        let formMatch = false;
-        if (ultraman.forms) {
-            formMatch = ultraman.forms.some(form => 
-                form.name.toLowerCase().includes(searchTerm)
-            );
-        }
-        
-        if (nameMatch || formMatch) {
-            foundResults = true;
-            const card = document.createElement('div');
-            card.className = 'ultraman-card';
-            card.innerHTML = `
-                <img src="${ultraman.avatarUrl}" alt="${ultraman.name}" class="ultraman-img" data-id="${ultraman.id}">
-                <div class="ultraman-info">
-                    <h3 class="ultraman-name">${ultraman.name}</h3>
-                    <p class="ultraman-era">${ultraman.era} · ${ultraman.debutYear}年登场</p>
-                    ${ultraman.forms && ultraman.forms.length > 1 ? `<p class="ultraman-forms">${ultraman.forms.length} 种形态</p>` : ''}
-                    ${formMatch ? `<p class="search-match">匹配形态: ${ultraman.forms.filter(f => f.name.toLowerCase().includes(searchTerm)).map(f => f.name).join(', ')}</p>` : ''}
-                </div>
-            `;
-            
-            // 点击卡片查看详情
-            card.addEventListener('click', function(e) {
-                if (!e.target.classList.contains('ultraman-img')) {
-                    showUltramanDetails(ultraman.id);
-                }
-            });
-            
-            // 点击图片查看大图
-            const img = card.querySelector('.ultraman-img');
-            img.addEventListener('click', function(e) {
-                e.stopPropagation();
-                showLargeImage(ultraman.avatarUrl);
-            });
-            
-            grid.appendChild(card);
-        }
-    });
-    
-    if (!foundResults) {
-        grid.innerHTML = '<div class="no-results"><p>没有找到匹配的奥特曼或形态</p></div>';
-    }
+// 关闭详情页
+function closeDetails() {
+  document.getElementById('ultramanDetails').innerHTML = '';
 }
 
-// 本地存储相关
-function saveUltramans() {
-    localStorage.setItem('ultramans', JSON.stringify(ultramans));
+// 添加形态字段
+function addFormField(name = '', power = 0) {
+  const formsContainer = document.getElementById('formsContainer');
+  const field = document.createElement('div');
+  field.className = 'form-field flex gap-2 mb-2';
+  field.innerHTML = `
+    <input type="text" placeholder="形态名称" value="${name}" class="form-name flex-grow p-2 border rounded">
+    <input type="number" placeholder="战斗力" value="${power}" class="form-power w-32 p-2 border rounded">
+    <button type="button" onclick="this.parentElement.remove()" class="bg-gray-200 p-2 rounded hover:bg-gray-300">
+      <i class="fas fa-times"></i>
+    </button>
+  `;
+  formsContainer.appendChild(field);
 }
 
-function loadUltramans() {
-    const saved = localStorage.getItem('ultramans');
-    // 清除所有默认奥特曼信息，只保留空数组
-    ultramans = saved ? JSON.parse(saved) : [];
+// 筛选奥特曼
+function filterUltramans(searchTerm) {
+  const filtered = ultramans.filter(ultraman => 
+    ultraman.name.toLowerCase().includes(searchTerm) || 
+    ultraman.era.toLowerCase().includes(searchTerm) ||
+    ultraman.race.toLowerCase().includes(searchTerm)
+  );
+  
+  renderFilteredGrid(filtered);
 }
 
-// 筛选器变化事件
-document.getElementById('eraFilter').addEventListener('change', renderUltramanGrid);
-document.getElementById('genderFilter').addEventListener('change', renderUltramanGrid);
-document.getElementById('birthPlaceFilter').addEventListener('change', renderUltramanGrid);
-document.getElementById('raceFilter').addEventListener('change', renderUltramanGrid);
-document.getElementById('sortFilter').addEventListener('change', renderUltramanGrid);
+// 按时代筛选
+function filterByEra(era) {
+  if (era === 'all') {
+    renderUltramanGrid();
+    return;
+  }
+  
+  const filtered = ultramans.filter(ultraman => ultraman.era === era);
+  renderFilteredGrid(filtered);
+}
+
+// 渲染筛选后的网格
+function renderFilteredGrid(filteredUltramans) {
+  const gridContainer = document.getElementById('ultramanGrid');
+  gridContainer.innerHTML = '';
+  
+  if (filteredUltramans.length === 0) {
+    gridContainer.innerHTML = '<p class="text-center text-gray-500">没有找到匹配的奥特曼</p>';
+    return;
+  }
+  
+  filteredUltramans.forEach((ultraman) => {
+    // 与renderUltramanGrid相同的卡片渲染逻辑
+    const card = document.createElement('div');
+    card.className = 'bg-white rounded-lg shadow-md overflow-hidden transform transition duration-300 hover:scale-105';
+    card.innerHTML = `
+      <div class="relative">
+        <img src="${ultraman.imageUrl || 'default-ultraman.jpg'}" alt="${ultraman.name}" class="w-full h-48 object-cover">
+        <div class="absolute top-2 right-2 flex space-x-1">
+          <button onclick="editUltraman(${ultramans.findIndex(u => u.id === ultraman.id)})" class="bg-yellow-500 p-1 rounded-full text-white hover:bg-yellow-600">
+            <i class="fas fa-edit"></i>
+          </button>
+          <button onclick="deleteUltraman('${ultraman.id}')" class="bg-red-500 p-1 rounded-full text-white hover:bg-red-600">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      </div>
+      <div class="p-4">
+        <h3 class="text-xl font-bold text-gray-800">${ultraman.name}</h3>
+        <p class="text-gray-600">${ultraman.era} · ${ultraman.debutYear}年</p>
+        <div class="mt-2 flex justify-between items-center">
+          <span class="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">战斗力: ${ultraman.power}</span>
+          <button onclick="viewUltramanDetails('${ultraman.id}')" class="text-indigo-600 hover:text-indigo-800 text-sm">
+            查看详情 <i class="fas fa-arrow-right ml-1"></i>
+          </button>
+        </div>
+      </div>
+    `;
+    gridContainer.appendChild(card);
+  });
+}
+
+// 暴露函数到全局，确保HTML中的事件可以调用
+window.editUltraman = editUltraman;
+window.deleteUltraman = deleteUltraman;
+window.viewUltramanDetails = viewUltramanDetails;
+window.closeDetails = closeDetails;
+window.addFormField = addFormField;
