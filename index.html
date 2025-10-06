@@ -8,6 +8,14 @@
     <link rel="stylesheet" href="cropper.min.css">
     <script src="cropper.min.js"></script>
     <link rel="stylesheet" href="style.css">
+    <!-- 引入Bmob工具（复制这段） -->
+<script src="https://cdn.jsdelivr.net/npm/bmob-js-sdk@1.0.2/dist/bmob.min.js"></script>
+
+<!-- 连接你的Bmob应用（替换成你的密钥） -->
+<script>
+  // 初始化Bmob（替换成你第三步记下来的两个值）
+  Bmob.initialize("你的Application ID", "你的REST API Key");
+</script>
 </head>
 <body>
     <!-- 登录模态框 -->
@@ -567,5 +575,36 @@
     </div>
     
     <script src="script.js"></script>
+    <script>
+  // 从Bmob读取奥特曼信息，并监听变化
+  function loadUltramans() {
+    const Ultraman = Bmob.Object.extend("Ultraman");
+    const query = new Bmob.Query(Ultraman);
+    
+    // 获取所有数据
+    query.find({
+      success: function(results) {
+        const listContainer = document.getElementById('ultramanList');
+        listContainer.innerHTML = '';
+        
+        // 循环显示每个奥特曼
+        for (let i = 0; i < results.length; i++) {
+          const ultraman = results[i];
+          listContainer.innerHTML += `
+            <div style="margin: 10px; padding: 10px; border: 1px solid #ccc;">
+              <h3>${ultraman.get('name')}</h3>
+              <p>技能：${ultraman.get('skill')}</p>
+              <img src="${ultraman.get('img')}" style="width: 200px;">
+            </div>
+          `;
+        }
+      }
+    });
+  }
+
+  // 页面加载时就读取数据，并且每3秒自动刷新一次（确保实时性）
+  loadUltramans();
+  setInterval(loadUltramans, 3000); // 3秒刷新一次
+</script>
 </body>
 </html>
